@@ -1,0 +1,2318 @@
+---
+title: "YFinance"
+author: "Mkshots"
+format: html
+editor: visual
+jupyter: python3
+---
+
+## Phase 1: Workbook set-up & YFinance Downloads
+
+```{r}
+library(reticulate)
+py_config()
+```
+
+```{r}
+library(reticulate)
+py_install(c("yfinance", "pandas", "openpyxl", "datetime", "pytz","IPython", "scipy"), pip = TRUE)
+```
+
+```{python}
+import yfinance as yf
+import pandas as pd
+import datetime as datetime
+import pytz
+from IPython.display import display
+```
+
+Path
+
+```{python}
+base_dir = r"your path location here"
+```
+
+For CSVs like a data source:
+
+```{python}
+import os
+import re
+from datetime import datetime
+
+import pandas as pd
+import yfinance as yf
+
+# =====================================================
+# SETTINGS
+# =====================================================
+
+tickers = [
+    "TICKER 1",
+    "TICKER 2",
+    "TICKER 3",
+    "TICKER 4",
+    "TICKER 5",
+#add more tickers as required.
+]
+
+start_year = 2020
+
+# base_dir should already be defined in a previous chunk
+# Example:
+# base_dir = r"C:\Users\username\path"
+
+today = datetime.today().strftime("%Y%m%d")
+
+# =====================================================
+# CREATE FOLDERS
+# =====================================================
+
+income_dir = os.path.join(base_dir, "income_statements")
+balance_dir = os.path.join(base_dir, "balance_sheets")
+cashflow_dir = os.path.join(base_dir, "cashflows")
+info_dir = os.path.join(base_dir, "company_info")
+price_dir = os.path.join(base_dir, "price_history")
+
+for folder in [
+    income_dir,
+    balance_dir,
+    cashflow_dir,
+    info_dir,
+    price_dir
+]:
+    os.makedirs(folder, exist_ok=True)
+
+# =====================================================
+# HELPERS
+# =====================================================
+
+def safe_filename(name):
+    name = str(name).strip()
+    name = re.sub(r'[\\/*?:"<>|]', "", name)
+    name = re.sub(r"\s+", "_", name)
+    return name[:100]
+
+def get_company_name(ticker_obj, fallback):
+
+    try:
+
+        info = ticker_obj.info
+
+        company = (
+            info.get("longName")
+            or info.get("shortName")
+            or fallback
+        )
+
+        return safe_filename(company)
+
+    except Exception:
+
+        return safe_filename(fallback)
+
+def prepare_statement(df):
+
+    if df is None:
+        return pd.DataFrame()
+
+    if df.empty:
+        return pd.DataFrame()
+
+    cols = pd.to_datetime(df.columns, errors="coerce")
+
+    valid = cols.notna()
+
+    df = df.loc[:, valid]
+    cols = cols[valid]
+
+    keep = cols.year >= start_year
+
+    df = df.loc[:, keep]
+    cols = cols[keep]
+
+    if df.empty:
+        return pd.DataFrame()
+
+    df.columns = cols.strftime("%Y-%m-%d")
+
+    return df
+
+def convert_to_long(df, ticker, company):
+
+    output = (
+        df.reset_index()
+          .rename(columns={"index": "line_item"})
+          .melt(
+              id_vars="line_item",
+              var_name="fiscal_date",
+              value_name="value"
+          )
+    )
+
+    output["ticker"] = ticker
+    output["company_name"] = company
+
+    return output
+
+# =====================================================
+# STORAGE
+# =====================================================
+
+all_income = []
+all_balance = []
+all_cashflow = []
+all_info = []
+all_prices = []
+
+# =====================================================
+# MAIN LOOP
+# =====================================================
+
+for tk in tickers:
+
+    print(f"Processing {tk}")
+
+    try:
+
+        ticker_obj = yf.Ticker(tk)
+
+        company = get_company_name(
+            ticker_obj,
+            tk
+        )
+
+        # ==========================================
+        # INCOME STATEMENT
+        # ==========================================
+
+        income = prepare_statement(
+            ticker_obj.financials
+        )
+
+        if not income.empty:
+
+            file_name = (
+                f"{today}_{tk}_{company}_income_statement.csv"
+            )
+
+            income.to_csv(
+                os.path.join(
+                    income_dir,
+                    file_name
+                )
+            )
+
+            all_income.append(
+                convert_to_long(
+                    income,
+                    tk,
+                    company
+                )
+            )
+
+        # ==========================================
+        # BALANCE SHEET
+        # ==========================================
+
+        balance = prepare_statement(
+            ticker_obj.balance_sheet
+        )
+
+        if not balance.empty:
+
+            file_name = (
+                f"{today}_{tk}_{company}_balance_sheet.csv"
+            )
+
+            balance.to_csv(
+                os.path.join(
+                    balance_dir,
+                    file_name
+                )
+            )
+
+            all_balance.append(
+                convert_to_long(
+                    balance,
+                    tk,
+                    company
+                )
+            )
+
+        # ==========================================
+        # CASH FLOW
+        # ==========================================
+
+        cashflow = prepare_statement(
+            ticker_obj.cashflow
+        )
+
+        if not cashflow.empty:
+
+            file_name = (
+                f"{today}_{tk}_{company}_cashflow.csv"
+            )
+
+            cashflow.to_csv(
+                os.path.join(
+                    cashflow_dir,
+                    file_name
+                )
+            )
+
+            all_cashflow.append(
+                convert_to_long(
+                    cashflow,
+                    tk,
+                    company
+                )
+            )
+
+        # ==========================================
+        # COMPANY INFO
+        # ==========================================
+
+        try:
+
+            info = ticker_obj.info
+
+            info_df = pd.DataFrame([{
+                "ticker": tk,
+                "company_name": company,
+
+                "marketCap": info.get("marketCap"),
+                "enterpriseValue": info.get("enterpriseValue"),
+                "sharesOutstanding": info.get("sharesOutstanding"),
+                "floatShares": info.get("floatShares"),
+
+                "beta": info.get("beta"),
+
+                "debtToEquity": info.get("debtToEquity"),
+                "currentRatio": info.get("currentRatio"),
+                "quickRatio": info.get("quickRatio"),
+
+                "returnOnAssets": info.get("returnOnAssets"),
+                "returnOnEquity": info.get("returnOnEquity"),
+
+                "operatingMargins": info.get("operatingMargins"),
+                "profitMargins": info.get("profitMargins"),
+
+                "sector": info.get("sector"),
+                "industry": info.get("industry"),
+
+                "country": info.get("country"),
+                "currency": info.get("currency"),
+
+                "exchange": info.get("exchange")
+            }])
+
+            info_file = (
+                f"{today}_{tk}_{company}_company_info.csv"
+            )
+
+            info_df.to_csv(
+                os.path.join(
+                    info_dir,
+                    info_file
+                ),
+                index=False
+            )
+
+            all_info.append(info_df)
+
+        except Exception as e:
+
+            print(
+                f"Company info error for {tk}: {e}"
+            )
+
+        # ==========================================
+        # PRICE HISTORY
+        # ==========================================
+
+        try:
+
+            prices = ticker_obj.history(
+                period="5y",
+                auto_adjust=True
+            )
+
+            if not prices.empty:
+
+                prices = prices.reset_index()
+
+                prices["ticker"] = tk
+                prices["company_name"] = company
+
+                price_file = (
+                    f"{today}_{tk}_{company}_price_history.csv"
+                )
+
+                prices.to_csv(
+                    os.path.join(
+                        price_dir,
+                        price_file
+                    ),
+                    index=False
+                )
+
+                all_prices.append(prices)
+
+        except Exception as e:
+
+            print(
+                f"Price history error for {tk}: {e}"
+            )
+
+    except Exception as e:
+
+        print(
+            f"Error processing {tk}: {e}"
+        )
+
+# =====================================================
+# COMBINED FILES
+# =====================================================
+
+if all_income:
+
+    pd.concat(
+        all_income,
+        ignore_index=True
+    ).to_csv(
+        os.path.join(
+            base_dir,
+            f"{today}_ALL_income_statements.csv"
+        ),
+        index=False
+    )
+
+if all_balance:
+
+    pd.concat(
+        all_balance,
+        ignore_index=True
+    ).to_csv(
+        os.path.join(
+            base_dir,
+            f"{today}_ALL_balance_sheets.csv"
+        ),
+        index=False
+    )
+
+if all_cashflow:
+
+    pd.concat(
+        all_cashflow,
+        ignore_index=True
+    ).to_csv(
+        os.path.join(
+            base_dir,
+            f"{today}_ALL_cashflows.csv"
+        ),
+        index=False
+    )
+
+if all_info:
+
+    pd.concat(
+        all_info,
+        ignore_index=True
+    ).to_csv(
+        os.path.join(
+            base_dir,
+            f"{today}_ALL_company_info.csv"
+        ),
+        index=False
+    )
+
+if all_prices:
+
+    pd.concat(
+        all_prices,
+        ignore_index=True
+    ).to_csv(
+        os.path.join(
+            base_dir,
+            f"{today}_ALL_price_history.csv"
+        ),
+        index=False
+    )
+
+print("Download complete.")
+```
+
+Getting the Risk-Free Rate
+
+```{python}
+# =====================================================
+# DOWNLOAD RISK-FREE RATE (^TNX)
+# =====================================================
+
+import yfinance as yf
+import pandas as pd
+import os
+from datetime import datetime
+
+today = datetime.today().strftime("%Y%m%d")
+
+print("Downloading US 10Y Treasury Yield...")
+
+# Yahoo ticker for US 10Y Treasury Yield
+tnx = yf.download(
+    "^TNX",
+    start="2020-01-01",
+    auto_adjust=True,
+    progress=False
+)
+
+# =====================================================
+# CLEAN DAILY DATA
+# =====================================================
+
+tnx = tnx.reset_index()
+
+# Keep only date and close
+tnx = tnx[["Date", "Close"]]
+
+# Yahoo returns percentages
+# Example:
+# 4.25 means 4.25%
+
+tnx["rfr"] = tnx["Close"] / 100
+
+# =====================================================
+# CREATE ANNUAL AVERAGES
+# =====================================================
+
+tnx["year"] = pd.to_datetime(
+    tnx["Date"]
+).dt.year
+
+rfr_annual = (
+    tnx.groupby("year")["rfr"]
+    .mean()
+    .reset_index()
+)
+
+rfr_annual = rfr_annual.rename(
+    columns={
+        "year": "fiscal_year"
+    }
+)
+
+# =====================================================
+# SAVE FILES
+# =====================================================
+
+daily_file = os.path.join(
+    base_dir,
+    f"{today}_risk_free_rate_daily.csv"
+)
+
+annual_file = os.path.join(
+    base_dir,
+    f"{today}_risk_free_rate_annual.csv"
+)
+
+tnx.to_csv(
+    daily_file,
+    index=False
+)
+
+rfr_annual.to_csv(
+    annual_file,
+    index=False
+)
+
+print("\nAnnual Risk-Free Rates:")
+print(rfr_annual)
+
+print("\nSaved:")
+print(daily_file)
+print(annual_file)
+```
+
+## Phase 2: Financials building and validation
+
+Phase 2.1: Create the Company-Year Panel
+
+```{python}
+# =====================================================
+# PHASE 2.1
+# BUILD CLEAN COMPANY-YEAR PANEL
+# =====================================================
+
+import pandas as pd
+import os
+from datetime import datetime
+
+today = datetime.today().strftime("%Y%m%d")
+
+# =====================================================
+# LOAD COMBINED FILES
+# =====================================================
+
+income = pd.read_csv(
+    os.path.join(base_dir, f"{today}_ALL_income_statements.csv")
+)
+
+balance = pd.read_csv(
+    os.path.join(base_dir, f"{today}_ALL_balance_sheets.csv")
+)
+
+cashflow = pd.read_csv(
+    os.path.join(base_dir, f"{today}_ALL_cashflows.csv")
+)
+
+info = pd.read_csv(
+    os.path.join(base_dir, f"{today}_ALL_company_info.csv")
+)
+
+prices = pd.read_csv(
+    os.path.join(base_dir, f"{today}_ALL_price_history.csv")
+)
+
+print("Files loaded.")
+```
+
+Phase 2.2: Extract Required Income Statement Fields
+
+```{python}
+# =====================================================
+# EXTRACT INCOME STATEMENT VARIABLES
+# =====================================================
+
+income_fields = {
+    "Total Revenue": "revenue",
+    "EBIT": "ebit",
+    "EBITDA": "ebitda",
+    "Interest Expense": "interest_expense",
+    "Net Income": "net_income"
+}
+
+income_clean = (
+    income[
+        income["line_item"].isin(income_fields.keys())
+    ]
+    .copy()
+)
+
+income_clean["variable"] = (
+    income_clean["line_item"]
+    .map(income_fields)
+)
+
+income_clean["fiscal_year"] = pd.to_datetime(
+    income_clean["fiscal_date"]
+).dt.year
+
+income_panel = (
+    income_clean
+    .pivot_table(
+        index=[
+            "ticker",
+            "company_name",
+            "fiscal_year"
+        ],
+        columns="variable",
+        values="value",
+        aggfunc="first"
+    )
+    .reset_index()
+)
+income_panel.columns.name = None
+
+print(income_panel.head())
+```
+
+Phase 2.3: Extract Balance Sheet Variables
+
+```{python}
+# =====================================================
+# EXTRACT BALANCE SHEET VARIABLES
+# =====================================================
+
+balance_fields = {
+    "Total Assets": "total_assets",
+    "Current Assets": "current_assets",
+    "Current Liabilities": "current_liabilities",
+    "Working Capital": "working_capital",
+    "Total Liabilities Net Minority Interest": "total_liabilities",
+    "Total Debt": "total_debt",
+    "Long Term Debt": "long_term_debt",
+    "Current Debt": "current_debt",
+    "Stockholders Equity": "equity",
+    "Retained Earnings": "retained_earnings",
+    "Cash And Cash Equivalents": "cash",
+    "Net Debt": "net_debt"
+}
+
+balance_clean = (
+    balance[
+        balance["line_item"].isin(balance_fields.keys())
+    ]
+    .copy()
+)
+
+balance_clean["variable"] = (
+    balance_clean["line_item"]
+    .map(balance_fields)
+)
+
+balance_clean["fiscal_year"] = pd.to_datetime(
+    balance_clean["fiscal_date"]
+).dt.year
+
+balance_panel = (
+    balance_clean
+    .pivot_table(
+        index=[
+            "ticker",
+            "company_name",
+            "fiscal_year"
+        ],
+        columns="variable",
+        values="value",
+        aggfunc="first"
+    )
+    .reset_index()
+)
+balance_panel.columns.name = None
+print(balance_panel.head())
+```
+
+Phase 2.4: Extract Cash Flow Variables
+
+```{python}
+# =====================================================
+# EXTRACT CASH FLOW VARIABLES
+# =====================================================
+
+cashflow_fields = {
+    "Operating Cash Flow": "operating_cash_flow",
+    "Free Cash Flow": "free_cash_flow",
+    "Capital Expenditure": "capex"
+}
+
+cashflow_clean = (
+    cashflow[
+        cashflow["line_item"].isin(cashflow_fields.keys())
+    ]
+    .copy()
+)
+
+cashflow_clean["variable"] = (
+    cashflow_clean["line_item"]
+    .map(cashflow_fields)
+)
+
+cashflow_clean["fiscal_year"] = pd.to_datetime(
+    cashflow_clean["fiscal_date"]
+).dt.year
+
+cashflow_panel = (
+    cashflow_clean
+    .pivot_table(
+        index=[
+            "ticker",
+            "company_name",
+            "fiscal_year"
+        ],
+        columns="variable",
+        values="value",
+        aggfunc="first"
+    )
+    .reset_index()
+)
+cashflow_panel.columns.name = None
+print(cashflow_panel.head())
+```
+
+Phase 2.5: Calculate Annual Equity Volatility
+
+```{python}
+# =====================================================
+# CALCULATE ANNUAL EQUITY VOLATILITY
+# =====================================================
+
+# Convert dates to UTC first
+prices["Date"] = pd.to_datetime(
+    prices["Date"],
+    utc=True,
+    errors="coerce"
+)
+
+# Remove any rows that failed conversion
+prices = prices.dropna(subset=["Date"])
+
+# Sort data
+prices = prices.sort_values(
+    ["ticker", "Date"]
+)
+
+# Daily returns based on Close price
+prices["daily_return"] = (
+    prices.groupby("ticker")["Close"]
+    .pct_change()
+)
+
+# Extract year
+prices["fiscal_year"] = (
+    prices["Date"]
+    .dt.year
+)
+
+# Annualized volatility
+volatility = (
+    prices.groupby(
+        ["ticker", "fiscal_year"]
+    )["daily_return"]
+    .std()
+    .reset_index()
+)
+
+volatility["equity_volatility"] = (
+    volatility["daily_return"]
+    * (252 ** 0.5)
+)
+
+volatility = volatility.drop(
+    columns=["daily_return"]
+)
+
+print(volatility.head())
+print(volatility.shape)
+```
+
+Phase 2.6: Extracting historical market cap
+
+```{python}
+# =====================================================
+# HISTORICAL MARKET CAP
+# =====================================================
+
+# Extract fiscal year from prices
+
+prices["fiscal_year"] = (
+    pd.to_datetime(prices["Date"])
+    .dt.year
+)
+
+# Sort dates
+
+prices = prices.sort_values(
+    ["ticker", "Date"]
+)
+
+# Keep last trading day of each year
+
+year_end_prices = (
+    prices.groupby(
+        ["ticker", "fiscal_year"]
+    )
+    .tail(1)
+)
+
+# Get shares outstanding
+
+shares = info[
+    [
+        "ticker",
+        "sharesOutstanding"
+    ]
+].copy()
+
+# Merge shares with year-end prices
+
+historical_market_cap = (
+    year_end_prices[
+        [
+            "ticker",
+            "fiscal_year",
+            "Close"
+        ]
+    ]
+    .merge(
+        shares,
+        on="ticker",
+        how="left"
+    )
+)
+
+# Calculate market cap
+
+historical_market_cap[
+    "historical_market_cap"
+] = (
+    historical_market_cap["Close"]
+    *
+    historical_market_cap["sharesOutstanding"]
+)
+
+print(
+    historical_market_cap.head()
+)
+
+historical_market_cap.to_csv(
+    os.path.join(
+        base_dir,
+        f"{today}_historical_market_cap.csv"
+    ),
+    index=False
+)
+```
+
+Phase 2.7: Build Final Company-Year Panel
+
+```{python}
+# =====================================================
+# MERGE EVERYTHING
+# =====================================================
+
+panel = (
+    income_panel
+    .merge(
+        balance_panel,
+        on=[
+            "ticker",
+            "company_name",
+            "fiscal_year"
+        ],
+        how="outer"
+    )
+    .merge(
+        cashflow_panel,
+        on=[
+            "ticker",
+            "company_name",
+            "fiscal_year"
+        ],
+        how="outer"
+    )
+)
+
+# ==========================================
+# MERGE COMPANY INFO
+# ==========================================
+
+info_subset = info[[
+    "ticker",
+    "enterpriseValue",
+    "sharesOutstanding",
+    "beta"
+]]
+
+info_subset = info_subset.drop_duplicates(
+    subset=["ticker"]
+)
+
+panel = panel.merge(
+    info_subset,
+    on="ticker",
+    how="left"
+)
+
+# ==========================================
+# MERGE HISTORICAL MARKET CAP
+# ==========================================
+
+panel = panel.merge(
+    historical_market_cap[
+        [
+            "ticker",
+            "fiscal_year",
+            "historical_market_cap"
+        ]
+    ],
+    on=[
+        "ticker",
+        "fiscal_year"
+    ],
+    how="left"
+)
+
+# ==========================================
+# MERGE VOLATILITY
+# ==========================================
+
+panel = panel.merge(
+    volatility,
+    on=[
+        "ticker",
+        "fiscal_year"
+    ],
+    how="left"
+)
+
+# ==========================================
+# SAVE PANEL
+# ==========================================
+
+panel_file = os.path.join(
+    base_dir,
+    f"{today}_company_year_panel.csv"
+)
+
+panel.to_csv(
+    panel_file,
+    index=False
+)
+
+print(panel_file)
+print(panel.head())
+```
+
+Validation Chunk, to ensure all items are okay
+
+```{python}
+# =====================================================
+# DATA QUALITY CHECK
+# =====================================================
+
+print("Panel Shape:")
+print(panel.shape)
+
+print("\nMissing Values:")
+
+missing = (
+    panel.isna()
+    .sum()
+    .sort_values(ascending=False)
+)
+
+print(missing)
+
+print("\nRows with missing key variables:")
+
+key_vars = [
+    "revenue",
+    "ebit",
+    "interest_expense",
+    "total_assets",
+    "total_liabilities",
+    "equity",
+    "total_debt",
+    "operating_cash_flow",
+    "historical_market_cap",
+    "equity_volatility"
+]
+
+print(
+    panel[
+        panel[key_vars].isna().any(axis=1)
+    ][
+        ["ticker", "company_name", "fiscal_year"]
+    ]
+)
+```
+
+```{python}
+# =====================================================
+# CHECK MISSING VARIABLES FOR PROBLEM COMPANIES
+# =====================================================
+
+problem_rows = panel[
+    panel["ticker"].isin([
+        "Ticker 1 from above output",
+        "Ticker 2 from above output"
+        #add additional tickers as required
+    ])
+]
+
+pd.set_option("display.max_columns", None)
+
+print(problem_rows)
+```
+
+```{python}
+# =====================================================
+# CLEAN DEBT VARIABLES
+# =====================================================
+
+# If total debt missing, estimate from
+# current debt + long term debt
+
+panel["total_debt"] = (
+    panel["total_debt"]
+    .fillna(0)
+)
+
+panel["current_debt"] = (
+    panel["current_debt"]
+    .fillna(0)
+)
+
+panel["long_term_debt"] = (
+    panel["long_term_debt"]
+    .fillna(0)
+)
+
+estimated_debt = (
+    panel["current_debt"]
+    + panel["long_term_debt"]
+)
+
+panel["total_debt"] = panel["total_debt"].where(
+    panel["total_debt"] > 0,
+    estimated_debt
+)
+
+print("Debt cleanup complete.")
+```
+
+```{python}
+# =====================================================
+# MERGE RISK-FREE RATES INTO PANEL
+# =====================================================
+
+rfr = pd.read_csv(
+    os.path.join(
+        base_dir,
+        f"{today}_risk_free_rate_annual.csv"
+    )
+)
+
+panel = panel.merge(
+    rfr,
+    on="fiscal_year",
+    how="left"
+)
+
+print(panel[
+    [
+        "ticker",
+        "fiscal_year",
+        "rfr"
+    ]
+].head(10))
+
+# Save updated panel
+
+panel.to_csv(
+    os.path.join(
+        base_dir,
+        f"{today}_company_year_panel.csv"
+    ),
+    index=False
+)
+
+print("Panel updated with risk-free rates.")
+```
+
+## Phase 3: Creating comparison models
+
+First we ensure that we skip calculations for any values which have missing measures
+
+```{python}
+# =====================================================
+# PHASE 3.0
+# CREDIT RISK CALCULATION RULES
+# =====================================================
+
+import numpy as np
+
+# -----------------------------------------
+# Current Ratio
+# Current Assets / Current Liabilities
+# -----------------------------------------
+
+panel["current_ratio_valid"] = (
+    panel["current_assets"].notna()
+    &
+    panel["current_liabilities"].notna()
+    &
+    (panel["current_liabilities"] != 0)
+)
+
+# -----------------------------------------
+# Debt To Equity
+# Total Debt / Equity
+# -----------------------------------------
+
+panel["debt_to_equity_valid"] = (
+    panel["total_debt"].notna()
+    &
+    panel["equity"].notna()
+    &
+    (panel["equity"] != 0)
+)
+
+# -----------------------------------------
+# Cash Flow To Debt
+# Operating CF / Total Debt
+# -----------------------------------------
+
+panel["cashflow_to_debt_valid"] = (
+    panel["operating_cash_flow"].notna()
+    &
+    panel["total_debt"].notna()
+    &
+    (panel["total_debt"] > 0)
+)
+
+# -----------------------------------------
+# Interest Coverage
+# EBIT / Interest Expense
+# -----------------------------------------
+
+panel["interest_coverage_valid"] = (
+    panel["ebit"].notna()
+    &
+    panel["interest_expense"].notna()
+    &
+    (panel["interest_expense"] != 0)
+)
+
+# -----------------------------------------
+# Altman Z Score
+# Require all 5 components
+# -----------------------------------------
+
+panel["altman_valid"] = (
+    panel["working_capital"].notna()
+    &
+    panel["retained_earnings"].notna()
+    &
+    panel["ebit"].notna()
+    &
+    panel["historical_market_cap"].notna()
+    &
+    panel["revenue"].notna()
+    &
+    panel["total_assets"].notna()
+    &
+    panel["total_liabilities"].notna()
+    &
+    (panel["total_assets"] > 0)
+    &
+    (panel["total_liabilities"] > 0)
+)
+
+# -----------------------------------------
+# Merton Model
+# Require:
+# Equity Value
+# Debt
+# Volatility
+# Risk Free Rate
+# -----------------------------------------
+
+panel["merton_valid"] = (
+    panel["historical_market_cap"].notna()
+    &
+    panel["total_debt"].notna()
+    &
+    panel["equity_volatility"].notna()
+    &
+    panel["rfr"].notna()
+    &
+    (panel["historical_market_cap"] > 0)
+    &
+    (panel["total_debt"] > 0)
+    &
+    (panel["equity_volatility"] > 0)
+)
+
+# -----------------------------------------
+# Summary
+# -----------------------------------------
+
+validation_cols = [
+    "current_ratio_valid",
+    "debt_to_equity_valid",
+    "cashflow_to_debt_valid",
+    "interest_coverage_valid",
+    "altman_valid",
+    "merton_valid"
+]
+
+print(
+    panel[validation_cols]
+    .sum()
+)
+```
+
+```{python}
+# =====================================================
+# PHASE 3.1
+# ACCOUNTING-BASED CREDIT METRICS
+# =====================================================
+
+import numpy as np
+
+# -----------------------------------------
+# Current Ratio
+# -----------------------------------------
+
+panel["current_ratio"] = np.where(
+    panel["current_ratio_valid"],
+    panel["current_assets"]
+    / panel["current_liabilities"],
+    np.nan
+)
+
+# -----------------------------------------
+# Debt to Equity
+# -----------------------------------------
+
+panel["debt_to_equity"] = np.where(
+    panel["debt_to_equity_valid"],
+    panel["total_debt"]
+    / panel["equity"],
+    np.nan
+)
+
+# -----------------------------------------
+# Cash Flow to Debt
+# -----------------------------------------
+
+panel["cashflow_to_debt"] = np.where(
+    panel["total_debt"] > 0,
+    panel["operating_cash_flow"] / panel["total_debt"],
+    np.nan
+)
+
+# -----------------------------------------
+# Interest Coverage
+# -----------------------------------------
+
+panel["interest_coverage"] = np.where(
+    panel["interest_expense"] > 0,
+    panel["ebit"] / panel["interest_expense"],
+    np.nan
+)
+
+# -----------------------------------------
+# Altman Z-Score
+# -----------------------------------------
+
+panel["altman_x1"] = (
+    panel["working_capital"]
+    / panel["total_assets"]
+)
+
+panel["altman_x2"] = (
+    panel["retained_earnings"]
+    / panel["total_assets"]
+)
+
+panel["altman_x3"] = (
+    panel["ebit"]
+    / panel["total_assets"]
+)
+
+panel["altman_x4"] = (
+    panel["historical_market_cap"]
+    / panel["total_liabilities"]
+)
+
+panel["altman_x5"] = (
+    panel["revenue"]
+    / panel["total_assets"]
+)
+
+panel["altman_z_score"] = np.where(
+    panel["altman_valid"],
+    (
+        1.2 * panel["altman_x1"]
+        + 1.4 * panel["altman_x2"]
+        + 3.3 * panel["altman_x3"]
+        + 0.6 * panel["altman_x4"]
+        + 1.0 * panel["altman_x5"]
+    ),
+    np.nan
+)
+
+# -----------------------------------------
+# Preview
+# -----------------------------------------
+
+cols = [
+    "ticker",
+    "fiscal_year",
+    "current_ratio",
+    "debt_to_equity",
+    "cashflow_to_debt",
+    "interest_coverage",
+    "altman_z_score"
+]
+
+print(panel[cols].head(20))
+```
+
+Sanity checks:
+
+```{python}
+panel[
+    [
+        "ticker",
+        "fiscal_year",
+        "altman_z_score"
+    ]
+].sort_values(
+    "altman_z_score"
+).head(10)
+```
+
+```{python}
+panel[
+    [
+        "ticker",
+        "fiscal_year",
+        "altman_z_score"
+    ]
+].sort_values(
+    "altman_z_score",
+    ascending=False
+).head(10)
+```
+
+Checkers of the problems above:
+
+```{python}
+panel[
+    [
+        "ticker",
+        "fiscal_year",
+        "current_ratio",
+        "debt_to_equity",
+        "cashflow_to_debt",
+        "interest_coverage",
+        "altman_z_score"
+    ]
+].describe()
+```
+
+Adding in Data Flags for the companies with bad data:
+
+```{python}
+# =====================================================
+# DATA FLAGS
+# =====================================================
+
+panel["flag_negative_equity"] = (
+    panel["equity"] < 0
+)
+
+panel["flag_negative_ebit"] = (
+    panel["ebit"] < 0
+)
+
+panel["flag_negative_ocf"] = (
+    panel["operating_cash_flow"] < 0
+)
+
+panel["flag_zero_debt"] = (
+    panel["total_debt"] <= 0
+)
+
+panel["flag_missing_key_data"] = (
+    ~panel["merton_valid"]
+)
+
+print(
+    panel[
+        [
+            "ticker",
+            "fiscal_year",
+            "flag_negative_equity",
+            "flag_negative_ebit",
+            "flag_negative_ocf",
+            "flag_zero_debt",
+            "flag_missing_key_data"
+        ]
+    ].head(20)
+)
+```
+
+Now let's implement Merton's model for each company-year:
+
+Observed Inputs:
+
+-   E = Market Value of Equity (marketCap)
+
+-   σE = Equity Volatility
+
+-   K = Total Debt
+
+-   r = Risk-Free Rate
+
+-   T = 1 year
+
+We will solve for:
+
+-   VA = Asset Value
+
+-   σA = Asset Volatility
+
+Using Merton's equations:
+
+-   E = VA\*N(d1) - K\*exp(-rT)\*N(d2)
+
+-   σE\*E = N(d1)\*σA\*VA
+
+where:
+
+-   d1 = \[ln(VA/K) + (r + 0.5σA²)T\] / (σA√T)
+
+-   d2 = d1 - σA√T
+
+Then:
+
+1.  Distance To Default (DD)
+
+DD = \[ln(VA/K) + (r - 0.5σA²)T\] / (σA√T)
+
+2.  Probability of Default
+
+PD = N(-DD)
+
+```{python}
+# =====================================================
+# PHASE 3.2
+# MERTON STRUCTURAL MODEL
+# WITH SOLVER DIAGNOSTICS
+# =====================================================
+
+import numpy as np
+import pandas as pd
+
+from scipy.optimize import fsolve
+from scipy.stats import norm
+
+# ==========================================
+# SETTINGS
+# ==========================================
+
+T = 1.0
+
+# ==========================================
+# STORAGE
+# ==========================================
+
+asset_values = []
+asset_vols = []
+distance_to_default = []
+prob_default = []
+
+# Solver audit fields
+merton_solver_ier = []
+merton_solver_message = []
+merton_solver_status = []
+
+# ==========================================
+# LOOP THROUGH COMPANY-YEAR OBSERVATIONS
+# ==========================================
+
+for _, row in panel.iterrows():
+
+    # --------------------------------------
+    # Skip invalid observations
+    # --------------------------------------
+
+    if not row["merton_valid"]:
+
+        asset_values.append(np.nan)
+        asset_vols.append(np.nan)
+        distance_to_default.append(np.nan)
+        prob_default.append(np.nan)
+
+        merton_solver_ier.append(np.nan)
+        merton_solver_message.append(
+            "Merton model not attempted because required input data was missing or invalid."
+        )
+        merton_solver_status.append(
+            "Not attempted - invalid input data"
+        )
+
+        continue
+
+    try:
+
+        E = float(row["historical_market_cap"])
+        sigma_E = float(row["equity_volatility"])
+        K = float(row["total_debt"])
+        r = float(row["rfr"])
+
+        # ----------------------------------
+        # Initial guesses
+        # ----------------------------------
+
+        VA0 = E + K
+        sigma_A0 = sigma_E
+
+        # ----------------------------------
+        # System of equations
+        # ----------------------------------
+
+        def equations(x):
+
+            VA, sigma_A = x
+
+            d1 = (
+                np.log(VA / K)
+                + (r + 0.5 * sigma_A**2) * T
+            ) / (
+                sigma_A * np.sqrt(T)
+            )
+
+            d2 = d1 - sigma_A * np.sqrt(T)
+
+            eq1 = (
+                VA * norm.cdf(d1)
+                - K * np.exp(-r * T) * norm.cdf(d2)
+                - E
+            )
+
+            eq2 = (
+                norm.cdf(d1)
+                * sigma_A
+                * VA
+                - sigma_E
+                * E
+            )
+
+            return [eq1, eq2]
+
+        # ----------------------------------
+        # Solve with convergence diagnostics
+        # ----------------------------------
+
+        solution, info, ier, msg = fsolve(
+            equations,
+            [VA0, sigma_A0],
+            full_output=True
+        )
+
+        # Store raw solver outputs
+        merton_solver_ier.append(ier)
+        merton_solver_message.append(msg)
+
+        # Interpret solver result
+        if ier == 1:
+
+            merton_solver_status.append(
+                "Converged successfully"
+            )
+
+        else:
+
+            merton_solver_status.append(
+                "Warning: stopped before reaching a reliable solution"
+            )
+
+            asset_values.append(np.nan)
+            asset_vols.append(np.nan)
+            distance_to_default.append(np.nan)
+            prob_default.append(np.nan)
+
+            continue
+
+        VA = solution[0]
+        sigma_A = solution[1]
+
+        # ----------------------------------
+        # Sanity checks
+        # ----------------------------------
+
+        if (
+            VA <= 0
+            or sigma_A <= 0
+            or np.isnan(VA)
+            or np.isnan(sigma_A)
+        ):
+
+            asset_values.append(np.nan)
+            asset_vols.append(np.nan)
+            distance_to_default.append(np.nan)
+            prob_default.append(np.nan)
+
+            merton_solver_status[-1] = (
+                "Warning: solver converged but produced invalid asset value or asset volatility"
+            )
+
+            continue
+
+        # ----------------------------------
+        # Distance To Default
+        # ----------------------------------
+
+        DD = (
+            np.log(VA / K)
+            + (
+                r
+                - 0.5 * sigma_A**2
+            ) * T
+        ) / (
+            sigma_A * np.sqrt(T)
+        )
+
+        PD = norm.cdf(-DD)
+
+        asset_values.append(VA)
+        asset_vols.append(sigma_A)
+        distance_to_default.append(DD)
+        prob_default.append(PD)
+
+    except Exception as e:
+
+        asset_values.append(np.nan)
+        asset_vols.append(np.nan)
+        distance_to_default.append(np.nan)
+        prob_default.append(np.nan)
+
+        merton_solver_ier.append(np.nan)
+        merton_solver_message.append(str(e))
+        merton_solver_status.append(
+            "Error: Merton calculation failed"
+        )
+
+# ==========================================
+# SAFETY CHECK BEFORE SAVING TO PANEL
+# ==========================================
+
+print("Panel rows:", len(panel))
+print("Asset values:", len(asset_values))
+print("Asset vols:", len(asset_vols))
+print("DD values:", len(distance_to_default))
+print("PD values:", len(prob_default))
+print("Solver ier values:", len(merton_solver_ier))
+print("Solver messages:", len(merton_solver_message))
+print("Solver statuses:", len(merton_solver_status))
+
+# ==========================================
+# SAVE RESULTS TO PANEL
+# ==========================================
+
+panel["asset_value"] = asset_values
+panel["asset_volatility"] = asset_vols
+
+panel["distance_to_default"] = distance_to_default
+panel["probability_of_default"] = prob_default
+
+panel["merton_solver_ier"] = merton_solver_ier
+panel["merton_solver_message"] = merton_solver_message
+panel["merton_solver_status"] = merton_solver_status
+
+# ==========================================
+# DISPLAY RESULTS
+# ==========================================
+
+print(
+    panel[
+        [
+            "ticker",
+            "fiscal_year",
+            "distance_to_default",
+            "probability_of_default",
+            "merton_solver_ier",
+            "merton_solver_status"
+        ]
+    ].head(20)
+)
+
+print("\nMerton solver status summary:")
+
+print(
+    panel["merton_solver_status"]
+    .value_counts(dropna=False)
+)
+```
+
+Data Completeness:
+
+```{python}
+# =====================================================
+# DATA COMPLETENESS
+# =====================================================
+
+def assign_data_completeness(row):
+
+    if (
+        row["flag_missing_key_data"]
+        or row["merton_solver_status"]
+            == "Not attempted - invalid input data"
+    ):
+        return "Insufficient"
+
+    warning_count = sum([
+        row["flag_negative_equity"],
+        row["flag_negative_ebit"],
+        row["flag_negative_ocf"],
+        row["flag_zero_debt"]
+    ])
+
+    if warning_count > 0:
+        return "Partial"
+
+    return "Complete"
+
+
+def assign_data_completeness_reason(row):
+
+    if (
+        row["flag_missing_key_data"]
+        or row["merton_solver_status"]
+            == "Not attempted - invalid input data"
+    ):
+        return (
+            "One or more required inputs were unavailable, preventing a complete risk assessment."
+        )
+
+    reasons = []
+
+    if row["flag_negative_equity"]:
+        reasons.append("negative equity")
+
+    if row["flag_negative_ebit"]:
+        reasons.append("negative EBIT")
+
+    if row["flag_negative_ocf"]:
+        reasons.append("negative operating cash flow")
+
+    if row["flag_zero_debt"]:
+        reasons.append("zero debt")
+
+    if len(reasons) > 0:
+
+        return (
+            "Assessment was completed but the following warning indicators were detected: "
+            + ", ".join(reasons)
+            + "."
+        )
+
+    return (
+        "All required inputs were available and the Merton solver converged successfully."
+    )
+
+
+panel["data_completeness"] = (
+    panel.apply(
+        assign_data_completeness,
+        axis=1
+    )
+)
+
+panel["data_completeness_reason"] = (
+    panel.apply(
+        assign_data_completeness_reason,
+        axis=1
+    )
+)
+```
+
+```{python}
+# =====================================================
+# REPORTING VERSION OF PROBABILITY OF DEFAULT
+# =====================================================
+
+# Keep original decimal value
+# Example:
+# 0.003523 = 0.3523%
+
+panel["probability_of_default_pct"] = (
+    panel["probability_of_default"] * 100
+)
+
+# Optional: round for reporting
+panel["probability_of_default_pct"] = (
+    panel["probability_of_default_pct"]
+    .round(4)
+)
+
+panel["probability_of_default_pct_display"] = (
+    panel["probability_of_default_pct"]
+    .map(lambda x: f"{x:.4f}%"
+         if pd.notna(x)
+         else "N/A")
+)
+
+# Preview
+
+print(
+    panel[
+        [
+            "ticker",
+            "fiscal_year",
+            "distance_to_default",
+            "probability_of_default",
+            "probability_of_default_pct",
+            "probability_of_default_pct_display"
+        ]
+    ].head(20)
+)
+```
+
+```{python}
+panel[
+    [
+        "distance_to_default",
+        "probability_of_default_pct",
+        "probability_of_default_pct_display"
+    ]
+].describe()
+```
+
+```{python}
+panel.sort_values(
+    "probability_of_default_pct",
+    ascending=False
+)[
+    [
+        "ticker",
+        "fiscal_year",
+        "distance_to_default",
+        "probability_of_default_pct",
+        "probability_of_default_pct_display"
+    ]
+].head(20)
+```
+
+Risk level categorization
+
+```{python}
+# =====================================================
+# PHASE 3.3
+# CREDIT RISK INTERPRETATION FRAMEWORK
+# ALTMAN + MERTON COMBINED VIEW
+# =====================================================
+
+import numpy as np
+import pandas as pd
+
+# -----------------------------------------
+# Altman Assessment
+# -----------------------------------------
+# Classic Altman public-manufacturing interpretation:
+# Z >= 2.99       Strong
+# 1.81 to 2.99    Moderate
+# Z < 1.81        Weak
+# Missing          Insufficient Data
+# -----------------------------------------
+
+def assign_altman_assessment(z):
+
+    if pd.isna(z):
+        return "Insufficient Data"
+
+    if z >= 2.99:
+        return "Strong"
+
+    elif z >= 1.81:
+        return "Moderate"
+
+    else:
+        return "Weak"
+
+
+panel["altman_assessment"] = (
+    panel["altman_z_score"]
+    .apply(assign_altman_assessment)
+)
+
+
+# -----------------------------------------
+# Merton Assessment
+# -----------------------------------------
+# Based on Probability of Default %
+# PD < 0.10%       Strong
+# 0.10% to <1.00%  Moderate
+# PD >= 1.00%      Weak
+# Missing           Insufficient Data
+# -----------------------------------------
+
+def assign_merton_assessment(pd_pct):
+
+    if pd.isna(pd_pct):
+        return "Insufficient Data"
+
+    if pd_pct >= 1:
+        return "Weak"
+
+    elif pd_pct >= 0.1:
+        return "Moderate"
+
+    else:
+        return "Strong"
+
+
+panel["merton_assessment"] = (
+    panel["probability_of_default_pct"]
+    .apply(assign_merton_assessment)
+)
+
+
+# -----------------------------------------
+# Overall Indicator
+# -----------------------------------------
+# Low Risk:
+#   Both Altman and Merton are not weak.
+#
+# High Risk:
+#   Both Altman and Merton are weak.
+#
+# Mixed Signals:
+#   Altman and Merton do not align.
+#
+# Insufficient Data:
+#   Either model does not have enough data.
+# -----------------------------------------
+
+def assign_overall_indicator(row):
+
+    altman = row["altman_assessment"]
+    merton = row["merton_assessment"]
+
+    if (
+        altman == "Insufficient Data"
+        or merton == "Insufficient Data"
+    ):
+        return "Insufficient Data"
+
+    if (
+        altman == "Weak"
+        and merton == "Weak"
+    ):
+        return "High Risk"
+
+    if (
+        altman != "Weak"
+        and merton != "Weak"
+    ):
+        return "Low Risk"
+
+    return "Mixed Signals"
+
+
+panel["overall_indicator"] = (
+    panel.apply(
+        assign_overall_indicator,
+        axis=1
+    )
+)
+
+
+# -----------------------------------------
+# Commentary
+# -----------------------------------------
+
+def assign_commentary(row):
+
+    altman = row["altman_assessment"]
+    merton = row["merton_assessment"]
+    solver_status = row.get(
+        "merton_solver_status",
+        ""
+    )
+
+    # Insufficient data case
+    if (
+        altman == "Insufficient Data"
+        or merton == "Insufficient Data"
+    ):
+
+        return (
+            "The credit risk interpretation is limited because either the "
+            "Altman Z-Score or the Merton model could not be calculated with "
+            "sufficient input data. Analysts should review the data quality "
+            "flags and underlying financial statement inputs before drawing "
+            "a conclusion."
+        )
+
+    # Both weak
+    if (
+        altman == "Weak"
+        and merton == "Weak"
+    ):
+
+        return (
+            "Both accounting-based and market-based indicators suggest elevated "
+            "credit risk. The firm's financial statements show signs of weakness, "
+            "and market-based measures also imply a higher probability of default. "
+            "This alignment indicates a deteriorating credit profile."
+        )
+
+    # Altman weak, Merton not weak
+    if (
+        altman == "Weak"
+        and merton != "Weak"
+    ):
+
+        return (
+            "Market-based credit measures remain relatively stable, but "
+            "accounting-based indicators suggest financial weakness. This may "
+            "indicate that deterioration in the firm's financial statements has "
+            "not yet been fully reflected in market valuations."
+        )
+
+    # Altman not weak, Merton weak
+    if (
+        altman != "Weak"
+        and merton == "Weak"
+    ):
+
+        return (
+            "Accounting-based indicators remain relatively stable, while "
+            "market-based credit measures indicate elevated risk. This may "
+            "suggest that investors are anticipating future challenges that are "
+            "not yet fully visible in the firm's reported financial statements."
+        )
+
+    # Both not weak
+    return (
+        "The company's financial statements indicate a stable credit profile, "
+        "and market-based credit measures imply a relatively low probability of "
+        "default. Accounting and market signals are aligned and suggest low "
+        "credit risk."
+    )
+
+
+panel["commentary"] = (
+    panel.apply(
+        assign_commentary,
+        axis=1
+    )
+)
+
+
+# -----------------------------------------
+# Preview
+# -----------------------------------------
+
+print(
+    panel[
+        [
+            "ticker",
+            "fiscal_year",
+            "altman_z_score",
+            "altman_assessment",
+            "probability_of_default_pct_display",
+            "merton_assessment",
+            "overall_indicator",
+            "commentary"
+        ]
+    ].head(20)
+)
+
+print("\nOverall Indicator Summary:")
+
+print(
+    panel["overall_indicator"]
+    .value_counts(dropna=False)
+)
+```
+
+Export into csv:
+
+```{python}
+# =====================================================
+# PHASE 3.4
+# FINAL CREDIT RISK REPORT
+# =====================================================
+
+report_columns = [
+
+    # Company information
+    "ticker",
+    "company_name",
+    "fiscal_year",
+
+    # Data quality flags
+
+    "flag_negative_equity",
+    "flag_negative_ebit",
+    "flag_negative_ocf",
+    "flag_zero_debt",
+    "flag_missing_key_data",
+
+    # Data completeness
+
+    "data_completeness",
+    "data_completeness_reason",
+
+    # Accounting metrics
+    "current_ratio",
+    "debt_to_equity",
+    "cashflow_to_debt",
+    "interest_coverage",
+
+    # Altman model
+    "altman_z_score",
+    "altman_assessment",
+
+    # Market value input
+    "historical_market_cap",
+
+    # Merton model
+    "distance_to_default",
+    "probability_of_default",
+    "probability_of_default_pct_display",
+
+    # Merton solver diagnostics
+    "merton_solver_ier",
+    "merton_solver_status",
+    "merton_solver_message",
+
+    # Combined interpretation
+    "merton_assessment",
+    "overall_indicator",
+    "commentary"
+]
+
+credit_risk_report = (
+    panel[report_columns]
+    .copy()
+)
+
+# Sort for readability
+
+credit_risk_report = (
+    credit_risk_report
+    .sort_values(
+        [
+            "ticker",
+            "fiscal_year"
+        ]
+    )
+)
+
+# ==========================================
+# SAVE REPORT
+# ==========================================
+
+report_file = os.path.join(
+    base_dir,
+    f"{today}_credit_risk_report.csv"
+)
+
+credit_risk_report.to_csv(
+    report_file,
+    index=False
+)
+
+# ==========================================
+# DISPLAY SUMMARY
+# ==========================================
+
+print("\nCredit Risk Report Saved:")
+print(report_file)
+
+print("\nRisk Category Summary:")
+
+print(
+    credit_risk_report["overall_indicator"]
+    .value_counts(dropna=False)
+)
+
+print("\nPreview:")
+
+print(
+    credit_risk_report.head(20)
+)
+```
+
+## Phase 4: Latest report creation
+
+```{python}
+# =====================================================
+# LATEST COMPLETE COMPANY REPORT
+# =====================================================
+
+# A usable row is one where we have both
+# accounting and market-based risk interpretations
+
+credit_risk_report["usable_record"] = (
+    credit_risk_report["altman_z_score"].notna()
+    &
+    credit_risk_report["distance_to_default"].notna()
+    &
+    credit_risk_report["probability_of_default"].notna()
+    &
+    (
+        credit_risk_report["altman_assessment"]
+        != "Insufficient Data"
+    )
+    &
+    (
+        credit_risk_report["merton_assessment"]
+        != "Insufficient Data"
+    )
+)
+
+# Sort newest year first
+
+working = (
+    credit_risk_report
+    .sort_values(
+        ["ticker", "fiscal_year"],
+        ascending=[True, False]
+    )
+)
+
+latest_rows = []
+
+for ticker in working["ticker"].unique():
+
+    company = working[
+        working["ticker"] == ticker
+    ]
+
+    usable = company[
+        company["usable_record"]
+    ]
+
+    # Take newest usable row
+    if len(usable) > 0:
+
+        latest_rows.append(
+            usable.iloc[0]
+        )
+
+    # Otherwise take newest available row
+    else:
+
+        latest_rows.append(
+            company.iloc[0]
+        )
+
+latest_company_report = pd.DataFrame(
+    latest_rows
+)
+
+latest_company_report.drop(
+    columns=["usable_record"],
+    inplace=True,
+    errors="ignore"
+)
+
+# Save CSV
+
+latest_file = os.path.join(
+    base_dir,
+    f"{today}_latest_company_credit_risk_report.csv"
+)
+
+latest_company_report.to_csv(
+    latest_file,
+    index=False
+)
+
+print(latest_file)
+
+print(
+    latest_company_report[
+        [
+            "ticker",
+            "company_name",
+            "fiscal_year",
+            "altman_z_score",
+            "altman_assessment",
+            "probability_of_default_pct_display",
+            "merton_assessment",
+            "overall_indicator",
+            "commentary"
+        ]
+    ]
+)
+```
