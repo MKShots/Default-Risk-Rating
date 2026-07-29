@@ -29,7 +29,7 @@ from IPython.display import display
 Path
 
 ```{python}
-base_dir = r"your path location here"
+base_dir = r"Your path location here"
 ```
 
 For CSVs like a data source:
@@ -47,19 +47,17 @@ import yfinance as yf
 # =====================================================
 
 tickers = [
-    "TICKER 1",
-    "TICKER 2",
-    "TICKER 3",
-    "TICKER 4",
-    "TICKER 5",
-#add more tickers as required.
+    "Ticker 1",
+    "Ticker 2",
+    "Ticker 3",
+#can add more tickers over here
 ]
 
 start_year = 2020
 
 # base_dir should already be defined in a previous chunk
 # Example:
-# base_dir = r"C:\Users\username\path"
+# base_dir = r"C:\Users\username\path\folder"
 
 today = datetime.today().strftime("%Y%m%d")
 
@@ -1014,9 +1012,9 @@ print(
 
 problem_rows = panel[
     panel["ticker"].isin([
-        "Ticker 1 from above output",
-        "Ticker 2 from above output"
-        #add additional tickers as required
+        "Ticker 1",
+        "Ticker 3"
+# Can search for the relevant risky / problematic tickers from the above chunk
     ])
 ]
 
@@ -1100,6 +1098,10 @@ panel.to_csv(
 print("Panel updated with risk-free rates.")
 ```
 
+```{python}
+print(panel.columns.tolist())
+```
+
 ## Phase 3: Creating comparison models
 
 First we ensure that we skip calculations for any values which have missing measures
@@ -1111,6 +1113,8 @@ First we ensure that we skip calculations for any values which have missing meas
 # =====================================================
 
 import numpy as np
+
+print("START OF PHASE 3")
 
 # -----------------------------------------
 # Current Ratio
@@ -1125,6 +1129,8 @@ panel["current_ratio_valid"] = (
     (panel["current_liabilities"] != 0)
 )
 
+print("Current Ratio done")
+
 # -----------------------------------------
 # Debt To Equity
 # Total Debt / Equity
@@ -1137,6 +1143,8 @@ panel["debt_to_equity_valid"] = (
     &
     (panel["equity"] != 0)
 )
+
+print("Debt To Equity done")
 
 # -----------------------------------------
 # Cash Flow To Debt
@@ -1151,6 +1159,8 @@ panel["cashflow_to_debt_valid"] = (
     (panel["total_debt"] > 0)
 )
 
+print("Cash Flow To Debt done")
+
 # -----------------------------------------
 # Interest Coverage
 # EBIT / Interest Expense
@@ -1163,6 +1173,8 @@ panel["interest_coverage_valid"] = (
     &
     (panel["interest_expense"] != 0)
 )
+
+print("Interest Coverage done")
 
 # -----------------------------------------
 # Altman Z Score
@@ -1189,6 +1201,8 @@ panel["altman_valid"] = (
     (panel["total_liabilities"] > 0)
 )
 
+print("Altman Valid done")
+
 # -----------------------------------------
 # Merton Model
 # Require:
@@ -1213,6 +1227,10 @@ panel["merton_valid"] = (
     &
     (panel["equity_volatility"] > 0)
 )
+
+print("Merton Valid done")
+
+print(panel.dtypes)
 
 # -----------------------------------------
 # Summary
@@ -1384,48 +1402,6 @@ panel[
 ].describe()
 ```
 
-Adding in Data Flags for the companies with bad data:
-
-```{python}
-# =====================================================
-# DATA FLAGS
-# =====================================================
-
-panel["flag_negative_equity"] = (
-    panel["equity"] < 0
-)
-
-panel["flag_negative_ebit"] = (
-    panel["ebit"] < 0
-)
-
-panel["flag_negative_ocf"] = (
-    panel["operating_cash_flow"] < 0
-)
-
-panel["flag_zero_debt"] = (
-    panel["total_debt"] <= 0
-)
-
-panel["flag_missing_key_data"] = (
-    ~panel["merton_valid"]
-)
-
-print(
-    panel[
-        [
-            "ticker",
-            "fiscal_year",
-            "flag_negative_equity",
-            "flag_negative_ebit",
-            "flag_negative_ocf",
-            "flag_zero_debt",
-            "flag_missing_key_data"
-        ]
-    ].head(20)
-)
-```
-
 Now let's implement Merton's model for each company-year:
 
 Observed Inputs:
@@ -1469,6 +1445,11 @@ DD = \[ln(VA/K) + (r - 0.5σA²)T\] / (σA√T)
 PD = N(-DD)
 
 ```{python}
+
+print("TEST MERTON CHUNK")
+```
+
+```{python}
 # =====================================================
 # PHASE 3.2
 # MERTON STRUCTURAL MODEL
@@ -1480,6 +1461,8 @@ import pandas as pd
 
 from scipy.optimize import fsolve
 from scipy.stats import norm
+
+print("ENTERING MERTON")
 
 # ==========================================
 # SETTINGS
@@ -1717,6 +1700,50 @@ print("\nMerton solver status summary:")
 print(
     panel["merton_solver_status"]
     .value_counts(dropna=False)
+)
+
+print("Finished Merton block")
+```
+
+Adding in Data Flags for the companies with bad data:
+
+```{python}
+# =====================================================
+# DATA FLAGS
+# =====================================================
+
+panel["flag_negative_equity"] = (
+    panel["equity"] < 0
+)
+
+panel["flag_negative_ebit"] = (
+    panel["ebit"] < 0
+)
+
+panel["flag_negative_ocf"] = (
+    panel["operating_cash_flow"] < 0
+)
+
+panel["flag_zero_debt"] = (
+    panel["total_debt"] <= 0
+)
+
+panel["flag_missing_key_data"] = (
+    ~panel["merton_valid"]
+)
+
+print(
+    panel[
+        [
+            "ticker",
+            "fiscal_year",
+            "flag_negative_equity",
+            "flag_negative_ebit",
+            "flag_negative_ocf",
+            "flag_zero_debt",
+            "flag_missing_key_data"
+        ]
+    ].head(20)
 )
 ```
 
@@ -2165,16 +2192,29 @@ credit_risk_report = (
     .copy()
 )
 
-# Sort for readability
+# ==========================================
+# PRESERVE ORIGINAL TICKER ORDER
+# ==========================================
+
+ticker_order = {
+    ticker: i
+    for i, ticker in enumerate(tickers)
+}
+
+credit_risk_report["ticker_order"] = (
+    credit_risk_report["ticker"]
+    .map(ticker_order)
+)
 
 credit_risk_report = (
     credit_risk_report
     .sort_values(
         [
-            "ticker",
+            "ticker_order",
             "fiscal_year"
         ]
     )
+    .drop(columns=["ticker_order"])
 )
 
 # ==========================================
