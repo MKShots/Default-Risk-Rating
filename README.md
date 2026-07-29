@@ -1,11 +1,18 @@
-# Default Risk Rating Framework
+# Credit Risk Assessment Framework
 
-A credit risk assessment framework for publicly listed companies that combines accounting-based and market-based approaches to estimate default risk.
+A credit risk assessment framework for publicly listed companies that combines accounting-based and market-based methodologies to evaluate financial health and estimate default risk.
 
-The project extracts company financial statements and market data from Yahoo Finance (`yfinance`), calculates key credit risk ratios, computes Altman Z-Scores, and applies a modified Merton Structural Model to estimate:
+The framework extracts company financial statement and market data from Yahoo Finance (`yfinance`), calculates key credit risk ratios, computes Altman Z-Scores, applies a modified Merton Structural Model, and evaluates data completeness to generate transparent credit risk assessments.
 
+The framework estimates:
+
+- Altman Z-Score
 - Distance to Default (DD)
 - Probability of Default (PD)
+- Accounting-Based Risk Assessment
+- Market-Based Risk Assessment
+- Overall Credit Risk Indicator
+- Data Completeness Assessment
 
 The framework then combines accounting and market signals to provide interpretable risk assessments and commentary for analysts.
 
@@ -13,7 +20,7 @@ The framework then combines accounting and market signals to provide interpretab
 
 # Objective
 
-The objective of this project is to estimate the default risk of publicly listed companies using publicly available financial statement and market data.
+The objective of this project is to estimate the credit risk of publicly listed companies using publicly available financial statement and market data.
 
 The framework is designed to support:
 
@@ -24,11 +31,13 @@ The framework is designed to support:
 - Financial due diligence
 - Educational and research purposes
 
+The approach combines accounting-based and market-based credit indicators to provide a more complete view of a company's financial risk profile.
+
 ---
 
 # Methodology
 
-The framework combines two complementary approaches:
+The framework combines two complementary approaches.
 
 ## 1. Accounting-Based Assessment
 
@@ -73,7 +82,7 @@ Altman Z-Score assessments:
 
 ## 2. Market-Based Assessment
 
-A modified Merton Structural Model is used to estimate default risk.
+A modified Merton Structural Model is used to estimate market-implied default risk.
 
 Inputs include:
 
@@ -81,19 +90,68 @@ Inputs include:
 - Total Debt
 - Equity Volatility
 - Risk-Free Rate
+- One-Year Time Horizon
 
-Historical Market Capitalization is reconstructed as:
+### Historical Market Capitalization
 
-Market Capitalization = Share Price × Shares Outstanding
+Historical Market Capitalization is reconstructed using:
+
+Market Capitalization = Year-End Share Price × Shares Outstanding
+
+Year-end share prices are obtained from Yahoo Finance historical price data.
+
+### Equity Volatility
+
+Equity volatility is estimated from daily stock returns and annualized using:
+
+σE = σDaily × √252
+
+where 252 represents the approximate number of trading days in a year.
+
+### Merton Model Outputs
 
 The model estimates:
 
-- Asset Value
-- Asset Volatility
+- Asset Value (VA)
+- Asset Volatility (σA)
 - Distance to Default (DD)
 - Probability of Default (PD)
 
-The system also records solver diagnostics to verify whether numerical optimization converged successfully.
+Distance to Default is calculated as:
+
+DD = [ln(VA/K) + (r − 0.5σA²)T] / (σA√T)
+
+Probability of Default is calculated as:
+
+PD = N(-DD)
+
+where N() is the cumulative standard normal distribution.
+
+### Merton Assessment Framework
+
+| Probability of Default | Assessment |
+|----------|----------|
+| < 0.10% | Strong |
+| 0.10% - < 1.00% | Moderate |
+| >= 1.00% | Weak |
+
+### Solver Diagnostics
+
+The framework records solver diagnostics for every company-year observation, including:
+
+- Solver convergence status
+- Solver return codes
+- Solver messages
+- Failed estimation reasons
+
+This allows analysts to distinguish between:
+
+- Successful model estimations
+- Missing data
+- Numerical convergence issues
+- Invalid model solutions
+
+Observations are retained in the final report even when model estimation is unsuccessful.
 
 ---
 
@@ -123,11 +181,13 @@ Accounting and market indicators are evaluated together.
 
 # Data Quality Controls
 
-The framework includes several validation checks:
+The framework includes several validation checks.
 
 ### Input Validation
 
 - Missing key variables
+- Missing Altman model inputs
+- Missing Merton model inputs
 - Negative equity
 - Negative EBIT
 - Negative operating cash flow
@@ -138,6 +198,7 @@ The framework includes several validation checks:
 - Merton solver convergence checks
 - Asset value sanity checks
 - Asset volatility sanity checks
+- Distance to Default validation
 
 ### Data Completeness Assessment
 
@@ -145,8 +206,8 @@ Each observation is classified as:
 
 | Status | Description |
 |----------|----------|
-| Complete | All inputs available and model successfully estimated |
-| Partial | Model estimated but warning flags exist |
+| Complete | All required inputs available and model successfully estimated |
+| Partial | Model estimated but warning indicators exist |
 | Insufficient | Missing data prevented a complete assessment |
 
 ---
@@ -157,7 +218,7 @@ The framework generates two reports.
 
 ## 1. Credit Risk Report
 
-Contains all company-year observations.
+Contains all available company-year observations.
 
 Example fields:
 
@@ -185,6 +246,9 @@ altman_assessment
 
 historical_market_cap
 
+asset_value
+asset_volatility
+
 distance_to_default
 probability_of_default
 probability_of_default_pct_display
@@ -202,7 +266,9 @@ commentary
 
 ## 2. Latest Company Credit Risk Report
 
-Returns only the latest usable observation for each company.
+Returns the latest usable observation for each company.
+
+The report attempts to select the most recent company-year with sufficient accounting and market-based information available.
 
 This report is intended to provide a current snapshot of each company's credit profile.
 
@@ -235,11 +301,26 @@ project/
 
 ---
 
+# Model Limitations
+
+This framework is designed as a practical credit risk screening tool and includes several simplifying assumptions.
+
+- Yahoo Finance data quality depends on the availability and accuracy of publicly reported information.
+- Historical market capitalization is estimated using year-end share price multiplied by shares outstanding.
+- Current shares outstanding are used as a proxy where historical share count information is unavailable.
+- The Merton model assumes a one-year forecast horizon.
+- The risk-free rate is based on the annual average US 10-Year Treasury yield.
+- Altman Z-Score thresholds were originally developed for publicly traded manufacturing firms and may be less predictive for certain industries such as financial institutions.
+- Market-based estimates can be sensitive to changes in share prices and volatility.
+- The framework does not represent an official credit rating methodology.
+
+---
+
 # Important Notes
 
 - This project is intended for educational, analytical, and research purposes.
 - Outputs should be used as decision-support information and not as standalone credit ratings.
-- Market-based measures are sensitive to changes in stock prices and volatility.
+- Credit assessments should always be supplemented with additional qualitative review and professional judgement.
 - Financial statement quality and availability may affect output reliability.
 
 ---
