@@ -1,4 +1,4 @@
-# Credit Risk Assessment Framework
+# Credit Risk Assessment Framework (Version 2)
 
 A credit risk assessment framework for publicly listed companies that combines accounting-based and market-based methodologies to evaluate financial health and estimate default risk.
 
@@ -14,7 +14,7 @@ The framework estimates:
 - Overall Credit Risk Indicator
 - Data Completeness Assessment
 
-The framework then combines accounting and market signals to provide interpretable risk assessments and commentary for analysts.
+The framework combines accounting and market signals to provide interpretable risk assessments and commentary for analysts.
 
 ---
 
@@ -32,6 +32,29 @@ The framework is designed to support:
 - Educational and research purposes
 
 The approach combines accounting-based and market-based credit indicators to provide a more complete view of a company's financial risk profile.
+
+---
+
+# Version History
+
+## Version 2.0
+
+Major enhancements introduced in Version 2:
+
+- Automated company-year panel construction
+- Historical market capitalization reconstruction using year-end pricing
+- Enhanced Merton Structural Model implementation
+- Merton solver diagnostics and validation checks
+- Data completeness assessment framework
+- Observation-level credit commentary generation
+- Latest Company Credit Risk Report generation
+- Preservation of partial assessments when one model is available but the other is not
+- Improved report ordering and output management
+- Expanded validation and quality assurance controls
+
+## Version 1.0
+
+The original version focused on calculating accounting-based and market-based credit risk metrics and generating company-level credit risk assessments.
 
 ---
 
@@ -70,7 +93,7 @@ Where:
 - X₄ = Market Value of Equity / Total Liabilities
 - X₅ = Revenue / Total Assets
 
-Altman Z-Score assessments:
+### Altman Assessment Framework
 
 | Z-Score | Assessment |
 |----------|----------|
@@ -84,7 +107,7 @@ Altman Z-Score assessments:
 
 A modified Merton Structural Model is used to estimate market-implied default risk.
 
-Inputs include:
+### Inputs
 
 - Historical Market Capitalization
 - Total Debt
@@ -135,7 +158,28 @@ where N() is the cumulative standard normal distribution.
 | 0.10% - < 1.00% | Moderate |
 | >= 1.00% | Weak |
 
-### Solver Diagnostics
+---
+
+# Validation and Quality Assurance Pipeline
+
+Before any credit risk calculations are performed, the framework validates the availability and quality of required inputs.
+
+The workflow follows:
+
+1. Data Extraction
+2. Input Validation
+3. Accounting Metric Calculation
+4. Altman Z-Score Estimation
+5. Merton Structural Model Estimation
+6. Data Completeness Assessment
+7. Credit Risk Interpretation
+8. Report Generation
+
+This approach prevents invalid observations from producing misleading risk estimates while preserving transparency regarding missing or incomplete data.
+
+---
+
+# Solver Diagnostics
 
 The framework records solver diagnostics for every company-year observation, including:
 
@@ -173,9 +217,18 @@ Accounting and market indicators are evaluated together.
 
 - Accounting and market indicators disagree
 
+### Partial Assessment
+
+Examples:
+
+- Altman: Insufficient Data, Merton: Strong
+- Altman: Moderate, Merton: Insufficient Data
+
+In these situations the framework preserves any available model results rather than discarding useful information.
+
 ### Insufficient Data
 
-- Required inputs are unavailable
+- Both Altman and Merton assessments are unavailable due to missing inputs.
 
 ---
 
@@ -196,6 +249,9 @@ The framework includes several validation checks.
 ### Model Validation
 
 - Merton solver convergence checks
+- Solver return code tracking
+- Solver message logging
+- Failed estimation tracing
 - Asset value sanity checks
 - Asset volatility sanity checks
 - Distance to Default validation
@@ -219,6 +275,8 @@ The framework generates two reports.
 ## 1. Credit Risk Report
 
 Contains all available company-year observations.
+
+The report preserves observations even when model estimation is incomplete, allowing analysts to review validation issues, missing data, and partial assessments.
 
 Example fields:
 
@@ -293,10 +351,19 @@ project/
 
 ├── credit_risk_model.qmd
 ├── README.md
+│
+├── csv_documents/
+│   ├── income_statements/
+│   ├── balance_sheets/
+│   ├── cashflows/
+│   ├── company_info/
+│   └── price_history/
+│
 ├── outputs/
 │   ├── credit_risk_report.csv
 │   └── latest_company_credit_risk_report.csv
-└── data/
+│
+└── logs/
 ```
 
 ---
@@ -316,6 +383,21 @@ This framework is designed as a practical credit risk screening tool and include
 
 ---
 
+# Future Development
+
+Potential future enhancements include:
+
+- Sector-level credit risk framework
+- Sector-level Merton Structural Models
+- Market-cap-weighted sector default probability estimation
+- Industry-level benchmarking
+- Power BI credit risk dashboards
+- Historical sector trend analysis
+- Sector credit risk heatmaps
+- Cross-sector risk comparison reporting
+
+---
+
 # Important Notes
 
 - This project is intended for educational, analytical, and research purposes.
@@ -327,6 +409,8 @@ This framework is designed as a practical credit risk screening tool and include
 
 # Disclaimer
 
-This repository contains an anonymized implementation of a credit risk assessment framework. Company identifiers, file paths, and proprietary information have been removed.
+This repository contains an anonymized implementation of a credit risk assessment framework.
+
+Company identifiers, file paths, proprietary datasets, client coverage lists, and organization-specific information have been removed.
 
 Users should provide their own datasets and perform independent validation before using results for business decisions.
